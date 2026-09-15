@@ -1,0 +1,567 @@
+openapi: 3.0.3
+info:
+  title: AI Reconciliation Platform API
+  version: 1.0.0
+  description: Operational contract for reconciliation runs, investigation, completeness monitoring, and governed read-only AI search.
+paths:
+  /reconciliation-runs:
+    post:
+      summary: Create an asynchronous reconciliation run for a reporting period
+      description: >-
+        Starts a reconciliation run using the business-configured reconciliation policy.
+        The matching threshold is not supplied by the caller and is not modifiable through this API.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - processor_id
+                - reporting_period
+              properties:
+                processor_id:
+                  type: string
+                  description: Processor for which reconciliation should be evaluated.
+                reporting_period:
+                  type: string
+                  description: Reporting period or batch window for reconciliation.
+      responses:
+        '202':
+          description: Reconciliation run accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationRunCreated'
+      security:
+        - authenticatedIdentity: [reconciliation:run]
+  /reconciliation-runs/{runId}:
+    get:
+      summary: Retrieve the status and results of a reconciliation run
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reconciliation run status or final result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationRun'
+      security:
+        - authenticatedIdentity: [reconciliation:read]
+  /transactions/{transactionId}:
+    get:
+      summary: Retrieve a transaction's deterministic reconciliation outcome and supporting evidence
+      description: >-
+        Returns the current deterministic reconciliation status plus evidence such as source provenance,
+        matching details, mismatch reasons, and lifecycle context when available.
+      parameters:
+        - in: path
+          name: transactionId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Transaction detail returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionDetail'
+      security:
+        - authenticatedIdentity: [transaction:read]
+  /transactions/{transactionId}/lifecycle:
+    get:
+      summary: Retrieve lifecycle history for a transaction where data exists
+      parameters:
+        - in: path
+          name: transactionId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lifecycle view returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionLifecycle'
+      security:
+        - authenticatedIdentity: [transaction:read]
+  /processor-completeness:
+    post:
+      summary: Evaluate processor-data completeness for a period and processor
+      description: >-
+        Compares the expected transaction population from the payment gateway source of truth
+        with the processor-received population and indicates completeness gaps and alert status.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - processor_id
+                - reporting_period
+              properties:
+                processor_id:
+                  type: string
+                reporting_period:
+                  type: string
+      responses:
+        '202':
+          description: Completeness evaluation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessorCompletenessRun'
+      security:
+        - authenticatedIdentity: [completeness:run]
+  /processor-completeness/{runId}:
+    get:
+      summary: Retrieve processor-data completeness evaluation results
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Completeness result returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProcessorCompletenessResult'
+      security:
+        - authenticatedIdentity: [completeness:read]
+  /cases:
+    get:
+      summary: List investigation cases available to the caller within authorized scope
+      responses:
+        '200':
+          description: Case list returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InvestigationCaseSummary'
+      security:
+        - authenticatedIdentity: [case:read]
+  /cases/{caseId}:
+    get:
+      summary: Retrieve an investigation case including evidence, notes, disposition, and audit history
+      parameters:
+        - in: path
+          name: caseId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Investigation case returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvestigationCase'
+      security:
+        - authenticatedIdentity: [case:read]
+  /cases/{caseId}/actions:
+    post:
+      summary: Add reviewer action, evidence note, or case disposition for an investigation case
+      parameters:
+        - in: path
+          name: caseId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaseActionRequest'
+      responses:
+        '201':
+          description: Action recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseAction'
+      security:
+        - authenticatedIdentity: [case:write]
+  /metrics/reconciliation:
+    get:
+      summary: Retrieve finance and operations reconciliation metrics for a reporting period
+      parameters:
+        - in: query
+          name: processor_id
+          schema:
+            type: string
+        - in: query
+          name: reporting_period
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Business metrics returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationMetrics'
+      security:
+        - authenticatedIdentity: [metrics:read]
+  /ai/search:
+    post:
+      summary: Perform a governed natural-language search as a constrained read-only capability
+      description: >-
+        The request must be translated into a structured search intent that applies validation and least-privilege
+        access controls. This API does not allow unrestricted SQL or raw database queries.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchIntentRequest'
+      responses:
+        '200':
+          description: Search result returned under read-only authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchIntentResponse'
+      security:
+        - authenticatedIdentity: [search:read]
+components:
+  securitySchemes:
+    authenticatedIdentity:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Authentication occurs before access is granted. The server evaluates the authenticated identity and
+        enforces authorization to determine the caller's permitted transaction, merchant, case, and operational scope.
+  schemas:
+    ReconciliationRunCreated:
+      type: object
+      properties:
+        run_id:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, COMPLETED, FAILED]
+        processor_id:
+          type: string
+        reporting_period:
+          type: string
+    ReconciliationRun:
+      type: object
+      properties:
+        run_id:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, COMPLETED, FAILED]
+        processor_id:
+          type: string
+        reporting_period:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        totals:
+          type: object
+          properties:
+            reconciled_count:
+              type: integer
+            unreconciled_count:
+              type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReconciliationResult'
+    ReconciliationResult:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+        reconciliation_status:
+          type: string
+          enum: [RECONCILED, UNRECONCILED]
+        evaluation_timestamp:
+          type: string
+          format: date-time
+        matching_score:
+          type: number
+          nullable: true
+        source_system:
+          type: string
+        source_file_origin:
+          type: string
+        mismatch_reasons:
+          type: array
+          items:
+            type: string
+        differing_fields:
+          type: array
+          items:
+            type: string
+        lifecycle_history_reference:
+          type: string
+          nullable: true
+    TransactionDetail:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+        reconciliation_status:
+          type: string
+          enum: [RECONCILED, UNRECONCILED]
+        source_system:
+          type: string
+        source_file_origin:
+          type: string
+        matching_details:
+          type: object
+          nullable: true
+        mismatch_reasons:
+          type: array
+          items:
+            type: string
+        differing_fields:
+          type: array
+          items:
+            type: string
+        lifecycle_history:
+          type: array
+          items:
+            type: object
+    TransactionLifecycle:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+        lifecycle_events:
+          type: array
+          items:
+            type: object
+    ProcessorCompletenessRun:
+      type: object
+      properties:
+        run_id:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED, RUNNING, COMPLETED, FAILED]
+        processor_id:
+          type: string
+        reporting_period:
+          type: string
+    ProcessorCompletenessResult:
+      type: object
+      properties:
+        run_id:
+          type: string
+        processor_id:
+          type: string
+        reporting_period:
+          type: string
+        expected_transaction_population:
+          type: array
+          items:
+            type: string
+          description: Expected transaction population from the payment gateway source of truth.
+        received_transaction_population:
+          type: array
+          items:
+            type: string
+          description: Processor-received transaction population for the same period and processor.
+        expected_transaction_count:
+          type: integer
+        received_transaction_count:
+          type: integer
+        missing_records:
+          type: array
+          items:
+            type: string
+        unexpected_records:
+          type: array
+          items:
+            type: string
+        completeness_gap_detected:
+          type: boolean
+        completeness_alert_status:
+          type: string
+          enum: [NONE, ACTIVE, RESOLVED]
+    InvestigationCaseSummary:
+      type: object
+      properties:
+        case_id:
+          type: string
+        transaction_ids:
+          type: array
+          items:
+            type: string
+        case_status:
+          type: string
+        opened_at:
+          type: string
+          format: date-time
+        assigned_user:
+          type: string
+          nullable: true
+    InvestigationCase:
+      type: object
+      properties:
+        case_id:
+          type: string
+        transaction_ids:
+          type: array
+          items:
+            type: string
+        case_status:
+          type: string
+        opened_at:
+          type: string
+          format: date-time
+        evidence_summary:
+          type: string
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaseNote'
+        reviewer_actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaseAction'
+        final_disposition:
+          type: string
+          nullable: true
+        audit_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+    CaseActionRequest:
+      type: object
+      properties:
+        action_type:
+          type: string
+        note:
+          type: string
+          nullable: true
+        disposition:
+          type: string
+          nullable: true
+        evidence_reference:
+          type: string
+          nullable: true
+    CaseAction:
+      type: object
+      properties:
+        action_id:
+          type: string
+        action_type:
+          type: string
+        note:
+          type: string
+          nullable: true
+        disposition:
+          type: string
+          nullable: true
+        evidence_reference:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        actor:
+          type: string
+    CaseNote:
+      type: object
+      properties:
+        note_id:
+          type: string
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        actor:
+          type: string
+    AuditEntry:
+      type: object
+      properties:
+        entry_id:
+          type: string
+        event_type:
+          type: string
+        description:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        actor:
+          type: string
+    ReconciliationMetrics:
+      type: object
+      properties:
+        processor_id:
+          type: string
+        reporting_period:
+          type: string
+        expected_transactions:
+          type: integer
+        received_transactions:
+          type: integer
+        reconciled_count:
+          type: integer
+        unreconciled_count:
+          type: integer
+        reconciled_percentage:
+          type: number
+        unreconciled_percentage:
+          type: number
+        mismatch_counts_by_reason:
+          type: object
+        average_reconciliation_time:
+          type: string
+        sla_breaches:
+          type: integer
+    SearchIntentRequest:
+      type: object
+      properties:
+        natural_language_query:
+          type: string
+        constraints:
+          type: array
+          items:
+            type: string
+          description: Structured read-only search constraints that are allowed to be applied.
+    SearchIntentResponse:
+      type: object
+      properties:
+        intent_id:
+          type: string
+        structured_intent:
+          type: object
+        results:
+          type: array
+          items:
+            type: object
+        read_only:
+          type: boolean
+        restrictions:
+          type: array
+          items:
+            type: string
+        warning:
+          type: string
+          nullable: true
